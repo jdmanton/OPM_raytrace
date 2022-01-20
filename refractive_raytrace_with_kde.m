@@ -1,34 +1,69 @@
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% James Manton, Nov 2019    %
-% jmanton@mrc-lmb.cam.ac.uk %
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
 % Parameters
 SAVE_PSF = 1;
-n_1 = 1;
 na = 0.95;
+n_1 = 1;
 n_2 = 1.518;
 field_size = 512;
+num_points = 100000;
+kde_sigma = 0.01;
 
-surface_tilt = 27;
+surface_tilt = 30;
 
 n = [sind(surface_tilt); 0; -cosd(surface_tilt)];
 
 % Set up input rays
-px = -2:0.1:2;
+px = 0:0.1:tand(asind(na));
+px = [0:-0.1:-tand(asind(na)), px];
 py = px;
 [px, py] = meshgrid(px, py);
+r = sqrt(px.^2 + py.^2);
+px(r > tand(asind(na))) = NaN;
+py(r > tand(asind(na))) = NaN;
 px = px(:)';
 py = py(:)';
-pr = sqrt(px.^2 + py.^2);
-px(pr > 2 * na) = NaN;
-py(pr > 2 * na) = NaN;
 pz = -ones(1, numel(px));
 i = vertcat(px, py, pz);
 
+
+% Random rays on sphere
+x1 = -1 + (1 - -1) .* rand(1, num_points);
+x2 = -1 + (1 - -1) .* rand(1, num_points);
+sq = x1.^2 + x2.^2;
+x1(sq >= 1) = NaN;
+x2(sq >= 1) = NaN;
+x = 2 * x1 .* sqrt(1 - x1.^2 - x2.^2);
+y = 2 * x2 .* sqrt(1 - x1.^2 - x2.^2);
+z = 1 - 2 * (x1.^2 + x2.^2);
+i = vertcat(x, y, z);
+
+xs = zeros(1, num_points);
+ys = zeros(1, num_points);
+zs = zeros(1, num_points);
+num_completed = 0;
+while num_completed < num_points
+    x1 = -1 + (1 - -1) .* rand(1);
+    x2 = -1 + (1 - -1) .* rand(1);
+    sq = x1.^2 + x2.^2;
+    if (sq >= 1)
+        continue;
+    end
+    x = 2 * x1 .* sqrt(1 - x1.^2 - x2.^2);
+    y = 2 * x2 .* sqrt(1 - x1.^2 - x2.^2);
+    z = 1 - 2 * (x1.^2 + x2.^2);
+    i = [x; y; z];
+    if (acosd(dot(i, [0, 0, -1])) > asind(na))
+        continue;
+    end
+    num_completed = num_completed + 1;
+    xs(num_completed) = x;
+    ys(num_completed) = y;
+    zs(num_completed) = z;
+end
+i = vertcat(xs, ys, zs);
+
 % Normalise all rays
 i = i ./ vecnorm(i, 2, 1);
+i = unique(i', 'rows')';
 n = n ./ norm(n);
 n = repmat(n, 1, size(i, 2));
 
@@ -53,7 +88,6 @@ t_rot = rot * t;
 kx = linspace(-2, 2, field_size);
 ky = kx;
 [kx, ky] = meshgrid(kx, ky);
-kde_sigma = 0.1;
 
 kde_in = zeros(field_size);
 for j = 1:size(i, 2)
@@ -96,9 +130,9 @@ psf = psf ./ max(psf(:));
 
 if SAVE_PSF
     psf_16 = uint16((2^16 - 1) * psf);
-    imwrite(psf_16(:, :, 1), ['psf-', num2str(surface_tilt), '.tif'])
+    imwrite(psf_16(:, :, 1), ['psf_rand-', num2str(surface_tilt), '-', num2str(field_size), '.tif'])
     for j = 2:field_size
-        imwrite(psf_16(:, :, j), ['psf-', num2str(surface_tilt), '.tif'], 'WriteMode', 'append')
+        imwrite(psf_16(:, :, j), ['psf_rand-', num2str(surface_tilt), '-', num2str(field_size), '.tif'], 'WriteMode', 'append')
     end
 end
 
@@ -122,10 +156,11 @@ ylabel('y')
 zlabel('z')
 legend('Interface', 'Input', 'Output')
 view(0, 0)
+title(['Tilt = ', num2str(surface_tilt), ' degrees'])
 
 figure(2)
 scatter(i(1, :), i(2, :), 1, 'b')
-viscircles([0, 0], na, 'Color', 'b', 'LineWidth', 1);
+viscircles([0, 0], na, 'Color', 'b', 'LineWidth', 1)
 xlim([-1, 1])
 ylim([-1, 1])
 axis square
@@ -133,8 +168,8 @@ title('Input pupil')
 
 figure(3)
 scatter(t_rot(1, :), t_rot(2, :), 1, 'r')
-viscircles([0, 0], na, 'Color', 'b', 'LineWidth', 1);
-viscircles([0, 0], 1, 'Color', 'r', 'LineWidth', 1);
+viscircles([0, 0], na, 'Color', 'b', 'LineWidth', 1)
+viscircles([0, 0], 1, 'Color', 'r', 'LineWidth', 1)
 xlim([-n_2, n_2])
 ylim([-n_2, n_2])
 axis square
